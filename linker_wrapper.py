@@ -3,7 +3,15 @@ import subprocess
 import shutil
 import os
 
-CLANG_PATH = r"C:\Users\Leandro\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\llvm-mingw-20260616-ucrt-x86_64\bin\clang.exe"
+import glob
+
+WINGET_DIR = r"C:\Users\Leandro\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe"
+candidates = sorted(glob.glob(os.path.join(WINGET_DIR, "llvm-mingw-*", "bin", "clang.exe")))
+if candidates:
+    CLANG_PATH = candidates[-1]
+else:
+    CLANG_PATH = shutil.which("clang") or "clang.exe"
+
 PROJECT_ROOT = r"D:\rust\certicheck"
 
 import shlex

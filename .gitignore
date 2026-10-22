@@ -10,3 +10,4 @@ certcheck-br.exe.new
 *.pem
 *.cer
 *.crt
+*.ttf

@@ -1,11 +1,13 @@
 [package]
 name = "certcheck-br"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 authors = ["CertCheck BR Team"]
 description = "Ferramenta técnica de diagnóstico e validação de certificados digitais ICP-Brasil A1 e A3 para Windows"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/leandrop2103/certcheck-br"
+homepage = "https://github.com/leandrop2103/certcheck-br"
 
 [dependencies]
 # GUI Nativa de alto desempenho (modo imediato)

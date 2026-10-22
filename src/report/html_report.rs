@@ -314,7 +314,7 @@ pub fn generate_html_report(report: &DiagnosticReport) -> String {
 
         <div class="footer">
             <div>Documento gerado automaticamente pelo CertCheck BR — Ferramenta Técnica de Diagnóstico ICP-Brasil</div>
-            <div>https://github.com/lpl2103/certcheck-br</div>
+            <div>https://github.com/leandrop2103/certcheck-br</div>
         </div>
     </div>
 </body>

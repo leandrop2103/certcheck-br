@@ -283,7 +283,7 @@ pub fn import_pfx_certificates(
     }
 
     // Senhas padrão e de teste conhecidas do ambiente de desenvolvimento
-    for common in &["12345678", "afc2026", "aire2026", "sklrn2026", "1234", "123456", "123456789", ""] {
+    for common in &["", "12345678", "afc2026", "aire2026", "sklrn2026", "1234", "123456", "123456789"] {
         let s = common.to_string();
         if !candidates.contains(&s) {
             candidates.push(s);

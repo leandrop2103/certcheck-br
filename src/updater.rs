@@ -23,13 +23,15 @@ use std::io::{BufWriter, Read, Write};
 use std::process::Command;
 use tracing::{info, warn};
 
-/// Repositório público de distribuição no GitHub (contém apenas as releases com o .exe)
-pub const GITHUB_OWNER: &str = "lpl2103";
+/// Configuração de repositórios para o Auto-Updater com suporte a Fallback.
+///
+/// O CertCheck BR consulta primeiro o repositório do mantenedor atual (`leandrop2103/certcheck-br`).
+/// Se a requisição falhar (404, 403, suspensão temporária ou indisponibilidade de rede),
+/// o sistema tenta automaticamente o repositório de fallback (`lpl2103/certcheck-br`).
+pub const GITHUB_OWNER_PRIMARY: &str = "leandrop2103";
+pub const GITHUB_OWNER_FALLBACK: &str = "lpl2103";
 pub const GITHUB_REPO: &str = "certcheck-br";
-pub const GITHUB_API_LATEST: &str =
-    "https://api.github.com/repos/lpl2103/certcheck-br/releases/latest";
-pub const GITHUB_DIRECT_DOWNLOAD: &str =
-    "https://github.com/lpl2103/certcheck-br/releases/latest/download/certcheck-br.exe";
+pub const GITHUB_OWNERS: &[&str] = &[GITHUB_OWNER_PRIMARY, GITHUB_OWNER_FALLBACK];
 
 /// Informações sobre uma versão remota disponível
 #[derive(Debug, Clone)]
@@ -70,7 +72,7 @@ pub fn is_newer_version(remote: &str, current: &str) -> bool {
     }
 }
 
-/// Verifica se existe uma nova versão disponível no GitHub Releases.
+/// Verifica se existe uma nova versão disponível no GitHub Releases com suporte a Fallback.
 pub fn check_for_updates() -> Option<RemoteVersionInfo> {
     let current_version = env!("CARGO_PKG_VERSION");
     info!(
@@ -78,114 +80,158 @@ pub fn check_for_updates() -> Option<RemoteVersionInfo> {
         current_version
     );
 
-    // Consulta o repositório público de distribuição no GitHub
-    info!(
-        "Consultando releases no GitHub ({}/{})...",
-        GITHUB_OWNER, GITHUB_REPO
-    );
-    let gh_resp = ureq::get(GITHUB_API_LATEST)
-        .set(
-            "User-Agent",
-            &format!("CertCheckBR/{}", current_version),
-        )
-        .set("Accept", "application/vnd.github.v3+json")
-        .timeout(std::time::Duration::from_secs(8))
-        .call();
+    for (idx, owner) in GITHUB_OWNERS.iter().enumerate() {
+        let is_primary = idx == 0;
+        let role = if is_primary { "primário" } else { "fallback" };
+        let api_url = format!("https://api.github.com/repos/{owner}/{GITHUB_REPO}/releases/latest");
+        let direct_download = format!("https://github.com/{owner}/{GITHUB_REPO}/releases/latest/download/certcheck-br.exe");
 
-    match gh_resp {
-        Ok(resp) if resp.status() == 200 => {
-            if let Ok(json_str) = resp.into_string() {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                    let tag_name = json
-                        .get("tag_name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let clean_tag = tag_name.trim().trim_start_matches(['v', 'V']);
-                    let body = json
-                        .get("body")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Melhorias e correções de estabilidade.");
+        info!(
+            "Consultando releases no GitHub [{role}] ({}/{})...",
+            owner, GITHUB_REPO
+        );
 
-                    // Encontra a URL do binário certcheck-br.exe nos assets da release
-                    let mut dl_url = GITHUB_DIRECT_DOWNLOAD.to_string();
-                    if let Some(assets) = json.get("assets").and_then(|a| a.as_array()) {
-                        for asset in assets {
-                            if asset.get("name").and_then(|n| n.as_str())
-                                == Some("certcheck-br.exe")
-                            {
-                                if let Some(url) = asset
-                                    .get("browser_download_url")
-                                    .and_then(|u| u.as_str())
+        let gh_resp = ureq::get(&api_url)
+            .set(
+                "User-Agent",
+                &format!("CertCheckBR/{}", current_version),
+            )
+            .set("Accept", "application/vnd.github.v3+json")
+            .timeout(std::time::Duration::from_secs(8))
+            .call();
+
+        match gh_resp {
+            Ok(resp) if resp.status() == 200 => {
+                if let Ok(json_str) = resp.into_string() {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                        let tag_name = json
+                            .get("tag_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let clean_tag = tag_name.trim().trim_start_matches(['v', 'V']);
+                        let body = json
+                            .get("body")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Melhorias e correções de estabilidade.");
+
+                        // Encontra a URL do binário certcheck-br.exe nos assets da release
+                        let mut dl_url = direct_download;
+                        if let Some(assets) = json.get("assets").and_then(|a| a.as_array()) {
+                            for asset in assets {
+                                if asset.get("name").and_then(|n| n.as_str())
+                                    == Some("certcheck-br.exe")
                                 {
-                                    dl_url = url.to_string();
-                                    break;
+                                    if let Some(url) = asset
+                                        .get("browser_download_url")
+                                        .and_then(|u| u.as_str())
+                                    {
+                                        dl_url = url.to_string();
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if is_newer_version(clean_tag, current_version) {
-                        info!(
-                            "Nova versão encontrada no GitHub: v{} (atual: v{})",
-                            clean_tag, current_version
-                        );
-                        return Some(RemoteVersionInfo {
-                            version: clean_tag.to_string(),
-                            download_url: dl_url,
-                            release_notes: body.to_string(),
-                        });
-                    } else {
-                        info!(
-                            "Aplicativo já está na versão mais recente (v{}).",
-                            current_version
-                        );
+                        if is_newer_version(clean_tag, current_version) {
+                            info!(
+                                "Nova versão encontrada no GitHub [{role} {}]: v{} (atual: v{})",
+                                owner, clean_tag, current_version
+                            );
+                            return Some(RemoteVersionInfo {
+                                version: clean_tag.to_string(),
+                                download_url: dl_url,
+                                release_notes: body.to_string(),
+                            });
+                        } else {
+                            info!(
+                                "Aplicativo já está na versão mais recente (v{}) segundo [{role} {}].",
+                                current_version, owner
+                            );
+                            return None;
+                        }
                     }
                 }
             }
-        }
-        Ok(resp) => {
-            warn!(
-                "Resposta inesperada do GitHub Releases: status {}",
-                resp.status()
-            );
-        }
-        Err(e) => {
-            warn!("Não foi possível consultar o GitHub Releases: {}", e);
+            Ok(resp) => {
+                warn!(
+                    "Repositório [{role}] {}/{} retornou status inesperado {}. Tentando fallback...",
+                    owner, GITHUB_REPO, resp.status()
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "Falha ao consultar repositório [{role}] {}/{}: {}. Tentando fallback...",
+                    owner, GITHUB_REPO, e
+                );
+            }
         }
     }
 
+    info!("Nenhuma atualização encontrada ou repositórios temporariamente inacessíveis.");
     None
 }
 
-/// Executa o download da nova versão e realiza a substituição do executável no Windows.
+/// Executa o download da nova versão e realiza a substituição do executável no Windows com suporte a Fallback.
 pub fn perform_auto_update<F>(custom_url: Option<String>, progress_callback: F) -> Result<()>
 where
     F: Fn(UpdateStatus) + Send + 'static,
 {
     progress_callback(UpdateStatus::Downloading(0.0));
 
-    // Determina a URL de download (prioriza custom_url se fornecido)
-    let download_url = custom_url.unwrap_or_else(|| GITHUB_DIRECT_DOWNLOAD.to_string());
+    // Determina lista de URLs de download com fallback automático
+    let mut download_urls = Vec::new();
+    if let Some(ref url) = custom_url {
+        download_urls.push(url.clone());
+    }
+    for owner in GITHUB_OWNERS {
+        let direct = format!(
+            "https://github.com/{owner}/{GITHUB_REPO}/releases/latest/download/certcheck-br.exe"
+        );
+        if !download_urls.contains(&direct) {
+            download_urls.push(direct);
+        }
+    }
 
-    info!(
-        "Iniciando download da atualização a partir de '{}'...",
-        download_url
-    );
     let agent = ureq::builder()
         .redirects(5)
         .timeout(std::time::Duration::from_secs(120))
         .build();
 
-    let response = agent
-        .get(&download_url)
-        .set("User-Agent", "CertCheckBR/Updater")
-        .call()
-        .with_context(|| {
-            format!(
-                "Falha ao conectar no endereço de atualização: {}",
-                download_url
-            )
-        })?;
+    let mut response_opt = None;
+    let mut last_err = None;
+
+    for url in &download_urls {
+        info!("Iniciando download da atualização a partir de '{}'...", url);
+        match agent.get(url).set("User-Agent", "CertCheckBR/Updater").call() {
+            Ok(resp) if resp.status() == 200 => {
+                response_opt = Some(resp);
+                break;
+            }
+            Ok(resp) => {
+                warn!(
+                    "Servidor retornou status {} para '{}'. Tentando fallback...",
+                    resp.status(),
+                    url
+                );
+                last_err = Some(format!("Status HTTP {}", resp.status()));
+            }
+            Err(e) => {
+                warn!(
+                    "Falha de conexão com '{}': {}. Tentando fallback...",
+                    url, e
+                );
+                last_err = Some(e.to_string());
+            }
+        }
+    }
+
+    let response = match response_opt {
+        Some(r) => r,
+        None => bail!(
+            "Falha ao conectar aos servidores de atualização (primário e fallback). Detalhes: {:?}",
+            last_err
+        ),
+    };
 
     let content_length = response
         .header("Content-Length")
@@ -334,6 +380,14 @@ mod tests {
         assert!(!is_newer_version("0.1.0", "0.1.0"));
         assert!(!is_newer_version("0.1.0", "0.2.0"));
         assert!(!is_newer_version("v0.1.0", "0.1.1"));
+    }
+
+    #[test]
+    fn test_github_owners_configuration() {
+        assert_eq!(GITHUB_OWNERS.len(), 2);
+        assert_eq!(GITHUB_OWNERS[0], "leandrop2103");
+        assert_eq!(GITHUB_OWNERS[1], "lpl2103");
+        assert_eq!(GITHUB_REPO, "certcheck-br");
     }
 }
 

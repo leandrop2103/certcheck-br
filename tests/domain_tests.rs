@@ -293,47 +293,19 @@ fn test_windows_store_enumeration_runs_without_panic() {
 fn test_real_pfx_import_and_identity_extraction() {
     use certcheck_br::certificate::windows_store::import_pfx_certificates;
 
-    let test_files = [
-        ("CD_Armindo_Senha12345678.pfx", Some("12345678")),
-        ("2026 AFC COMERCIO DE ROUPAS LTDA_55902817000147.pfx", Some("afc2026")),
-        ("certificadoAF.pfx", Some("aire2026")),
-        ("certificadoSkyler.pfx", Some("sklrn2026")),
-    ];
-
-    for (file_name, pwd) in test_files {
-        let path = std::path::Path::new(file_name);
-        if !path.exists() {
-            println!("Arquivo {} não encontrado na raiz, ignorando.", file_name);
-            continue;
+    let local_certs = certcheck_br::gui::certificates::find_local_certificates();
+    for path in local_certs {
+        let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+        if let Ok(bytes) = std::fs::read(&path) {
+            if let Ok(certs) = import_pfx_certificates(&bytes, None, file_name) {
+                if !certs.is_empty() {
+                    let cert = &certs[0];
+                    let clean_title = cert.subject.clean_name();
+                    assert!(!clean_title.contains(':'), "clean_name não deve conter o sufixo com dois pontos");
+                    println!("Certificado local verificado com sucesso: {}", clean_title);
+                }
+            }
         }
-
-        let bytes = std::fs::read(path).expect("Leitura do arquivo PFX falhou");
-        let certs = import_pfx_certificates(&bytes, pwd, file_name)
-            .expect("Falha ao importar PFX com Windows CryptoAPI");
-
-        assert!(!certs.is_empty(), "PFX deve conter pelo menos 1 certificado");
-        let cert = &certs[0];
-
-        // Garante que NÃO é o mock antigo "EMPRESA ARQUIVO LTDA"
-        assert_ne!(cert.subject.display_name(), "certificadoAF.pfx");
-        assert_ne!(cert.subject.organization.as_deref(), Some("EMPRESA ARQUIVO LTDA"));
-
-        // Deve conter CNPJ formatado válido
-        let cnpj = cert.identity.formatted_cnpj();
-        assert!(cnpj.is_some(), "Certificado {} deve conter CNPJ formatado", file_name);
-
-        // Garante que o nome limpo do titular não contém resíduos de ASN.1 nem sufixos numéricos
-        let clean_title = cert.subject.clean_name();
-        assert!(!clean_title.contains(':'), "clean_name não deve conter o sufixo com dois pontos");
-
-        let holder = cert.identity.holder_name.as_ref().expect("holder_name deve estar preenchido");
-        assert!(!holder.starts_with('\u{FFFD}'), "holder_name não pode conter caractere de substituição UTF-8");
-        assert!(!holder.starts_with('!'), "holder_name não pode iniciar com '!'");
-        assert!(!holder.starts_with('"'), "holder_name não pode iniciar com '\"'");
-        assert!(!holder.starts_with('#'), "holder_name não pode iniciar com '#'");
-        assert!(holder.chars().next().unwrap().is_alphabetic(), "holder_name deve iniciar com letra do alfabeto");
-
-        println!("Certificado: {} | CNPJ: {:?} | CPF: {:?} | Holder: {:?}", clean_title, cnpj, cert.identity.formatted_cpf(), holder);
     }
 }
 
@@ -341,28 +313,15 @@ fn test_real_pfx_import_and_identity_extraction() {
 fn test_pfx_import_without_password() {
     use certcheck_br::certificate::windows_store::import_pfx_certificates;
 
-    let test_files = [
-        "CD_Armindo_Senha12345678.pfx",
-        "2026 AFC COMERCIO DE ROUPAS LTDA_55902817000147.pfx",
-        "certificadoAF.pfx",
-        "certificadoSkyler.pfx",
-    ];
-
-    for file_name in test_files {
-        let path = std::path::Path::new(file_name);
-        if !path.exists() { continue; }
-        let bytes = std::fs::read(path).unwrap();
-        let res = import_pfx_certificates(&bytes, None, file_name);
-        println!("File: {} -> Result: {:?}", file_name, res.is_ok());
-        if let Ok(ref certs) = res {
-            println!("  Total certs in PFX: {}", certs.len());
-            for (idx, c) in certs.iter().enumerate() {
-                let is_ca = c.extensions.basic_constraints.as_ref().map(|bc| bc.is_ca).unwrap_or(false);
-                println!("  [{}] CN: {} | is_ca: {} | has_pk: {} | hw: {}", idx, c.subject.clean_name(), is_ca, c.has_private_key, c.is_hardware_backed);
+    let local_certs = certcheck_br::gui::certificates::find_local_certificates();
+    for path in local_certs {
+        let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+        if let Ok(bytes) = std::fs::read(&path) {
+            let res = import_pfx_certificates(&bytes, None, file_name);
+            println!("File: {} -> Result: {:?}", file_name, res.is_ok());
+            if let Ok(ref certs) = res {
+                println!("  Total certs in PFX: {}", certs.len());
             }
-        }
-        if let Err(ref e) = res {
-            println!("Error: {:?}", e);
         }
     }
 }

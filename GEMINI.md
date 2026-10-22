@@ -30,7 +30,7 @@ cargo build --release
 ### Validação de Símbolos Obrigatória:
 Após compilar, confirme que nenhuma dependência indevida está presente na tabela de importações do executável:
 ```powershell
-& "C:\Users\Leandro\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\llvm-mingw-20260616-ucrt-x86_64\bin\llvm-readobj.exe" --coff-imports certcheck-br.exe | Select-String "libunwind|bcryptprimitives|GetSystemTimePreciseAsFileTime"
+& (Get-Item "C:\Users\Leandro\AppData\Local\Microsoft\WinGet\Packages\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\llvm-mingw-*\bin\llvm-readobj.exe").FullName --coff-imports certcheck-br.exe | Select-String "libunwind|bcryptprimitives|GetSystemTimePreciseAsFileTime"
 ```
 *(O comando acima deve retornar vazio, confirmando ausência dessas dependências).*
 
@@ -50,7 +50,7 @@ Copy-Item -Force certcheck-br.exe dist\certcheck-br.exe
 
 Sempre que concluir um ciclo de melhorias e incrementar a versão:
 
-### Passo A: Repositório de Código-Fonte (`lpl2103/certcheck-br`)
+### Passo A: Repositório de Código-Fonte (`leandrop2103/certcheck-br`)
 ```powershell
 git add .
 git commit -m "feat/fix: <descrição sucinta das alterações> (v<VERSÃO>)"
@@ -62,7 +62,7 @@ git push origin v<VERSÃO>
 ### Passo B: Publicação da Release no GitHub (Disponibilização do Executável para Auto-Update)
 O executável atualizado (`certcheck-br.exe`) deve ser anexado como asset da release para que o módulo `updater.rs` detecte e baixe automaticamente para os clientes:
 ```powershell
-gh release create v<VERSÃO> certcheck-br.exe --repo lpl2103/certcheck-br --title "CertCheck BR v<VERSÃO>" --notes "<Notas da versão resumidas>"
+gh release create v<VERSÃO> certcheck-br.exe --repo leandrop2103/certcheck-br --title "CertCheck BR v<VERSÃO>" --notes "<Notas da versão resumidas>"
 ```
 
 ---
